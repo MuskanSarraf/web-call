@@ -23,9 +23,12 @@ function ChatPage({ userId }: ChatPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const {
+const {
   isCalling,
+  incomingCall,
   startCall,
+  acceptCall,
+  rejectCall,
   endCall,
   remoteAudioRef,
 } = useWebRTC(
@@ -183,6 +186,22 @@ function ChatPage({ userId }: ChatPageProps) {
       {selectedUser ? (
         <section>
           <h2>Chat with {selectedUser.email}</h2>
+            {incomingCall && (
+              <div>
+                  <p>
+                     📞 Incoming call from {selectedUser.email}
+                 </p>
+
+                <button onClick={() => void acceptCall()}>
+                  Accept
+                </button>
+
+                <button onClick={() => void rejectCall()}>
+                  Reject
+                 </button>
+                </div>
+            )}
+            
            <CallControls
             onCall={() => void startCall()}
             onEndCall={endCall}
