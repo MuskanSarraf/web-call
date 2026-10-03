@@ -8,24 +8,26 @@ function AuthPage() {
   const [message, setMessage] = useState("");
 
   const handleSubmit = async () => {
-    try {
-      setMessage("");
+  try {
+    setMessage("");
 
-      if (isSignUp) {
-        await signUp(email, password);
-        setMessage("Account created. You can now log in.");
-      } else {
-        await signIn(email, password);
-        setMessage("Logged in successfully.");
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        setMessage(error.message);
-      } else {
-        setMessage("Something went wrong.");
-      }
+    if (isSignUp) {
+      await signUp(email, password);
+      setMessage("Account created. You can now log in.");
+    } else {
+      await signIn(email, password);
+      setMessage("Logged in successfully.");
     }
-  };
+  } catch (error) {
+    console.error("AUTH ERROR:", error);
+
+    if (error instanceof Error) {
+      setMessage(error.message);
+    } else {
+      setMessage("Something went wrong.");
+    }
+  }
+};
 
   return (
     <div>
