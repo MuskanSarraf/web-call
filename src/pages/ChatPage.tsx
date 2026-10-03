@@ -4,6 +4,9 @@ import type { Profile } from "../types/profile";
 import { getMessages, sendMessage } from "../services/messageService";
 import { getProfiles } from "../services/profileService";
 import { signOut } from "../services/authService";
+import { subscribeToMessages } from "../services/messageRealtimeService";
+import { supabase } from "../lib/supabase";
+
 
 type ChatPageProps = {
   userId: string;
@@ -61,6 +64,39 @@ function ChatPage({ userId }: ChatPageProps) {
 
     void loadMessages();
   }, [userId, selectedUser]);
+  useEffect(() => {
+  if (!selectedUser) {
+    return;
+  }
+
+  const channel = subscribeToMessages((newMessage) => {
+    const isCurrentConversation =
+      (newMessage.senderId === userId &&
+        newMessage.receiverId === selectedUser.id) ||
+      (newMessage.senderId === selectedUser.id &&
+        newMessage.receiverId === userId);
+
+    if (!isCurrentConversation) {
+      return;
+    }
+
+    setMessages((currentMessages) => {
+      const alreadyExists = currentMessages.some(
+        (message) => message.id === newMessage.id,
+      );
+
+      if (alreadyExists) {
+        return currentMessages;
+      }
+
+      return [...currentMessages, newMessage];
+    });
+  });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, [userId, selectedUser]);
 
   const handleSendMessage = async () => {
     if (!selectedUser) {
