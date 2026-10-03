@@ -6,6 +6,7 @@ import { getProfiles } from "../services/profileService";
 import { signOut } from "../services/authService";
 import { subscribeToMessages } from "../services/messageRealtimeService";
 import { supabase } from "../lib/supabase";
+import CallControls from "../components/CallControls";
 
 
 type ChatPageProps = {
@@ -170,6 +171,15 @@ function ChatPage({ userId }: ChatPageProps) {
       {selectedUser ? (
         <section>
           <h2>Chat with {selectedUser.email}</h2>
+           <CallControls
+              onCall={() => {
+                console.log("Call clicked");
+           }}
+            onEndCall={() => {
+              console.log("End call clicked");
+           }}
+            isCalling={false}
+           />
 
           <div>
             {messages.length === 0 ? (
