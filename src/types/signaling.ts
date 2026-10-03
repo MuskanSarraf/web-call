@@ -1,7 +1,9 @@
 export type SignalType =
   | "offer"
   | "answer"
-  | "ice-candidate";
+  | "ice-candidate"
+  | "call-rejected"
+  |"call-ended";
 
 type SignalMetadata = {
   senderId: string;
@@ -20,4 +22,12 @@ export type SignalMessage =
   | (SignalMetadata & {
       type: "ice-candidate";
       data: RTCIceCandidateInit;
+    })
+  | (SignalMetadata & {
+      type: "call-rejected";
+      data: null;
+    })
+  | (SignalMetadata & {
+      type: "call-ended";
+      data: null;
     });
