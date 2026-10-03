@@ -201,10 +201,10 @@ const {
                  </button>
                 </div>
             )}
-            
+
            <CallControls
             onCall={() => void startCall()}
-            onEndCall={endCall}
+            onEndCall={() => void endCall()}
             isCalling={isCalling}
             />
             

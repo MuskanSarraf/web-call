@@ -182,22 +182,31 @@ export const useWebRTC = (
     setIsCalling(true);
   };
 
-  const endCall = () => {
-    localStreamRef.current?.getTracks().forEach(
-      (track) => {
-        track.stop();
-      },
-    );
+ const endCall = async () => {
+  if (channelRef.current && otherUserId) {
+    await sendSignal(channelRef.current, {
+      type: "call-ended",
+      senderId: userId,
+      receiverId: otherUserId,
+      data: null,
+    });
+  }
 
-    peerConnectionRef.current?.close();
+  localStreamRef.current?.getTracks().forEach((track) => {
+    track.stop();
+  });
 
-    localStreamRef.current = null;
-    peerConnectionRef.current = null;
+  peerConnectionRef.current?.close();
 
-    pendingCandidatesRef.current = [];
+  localStreamRef.current = null;
+  peerConnectionRef.current = null;
 
-    setIsCalling(false);
-  };
+  pendingCandidatesRef.current = [];
+  pendingOfferRef.current = null;
+
+  setIsCalling(false);
+  setIncomingCall(false);
+ };
 
   useEffect(() => {
     return () => {
