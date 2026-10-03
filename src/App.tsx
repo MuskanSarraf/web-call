@@ -1,6 +1,6 @@
 import AuthPage from "./pages/AuthPage";
+import ChatPage from "./pages/ChatPage";
 import { useAuth } from "./hooks/useAuth";
-import { signOut } from "./services/authService";
 
 function App() {
   const { user, loading } = useAuth();
@@ -13,19 +13,7 @@ function App() {
     return <AuthPage />;
   }
 
-  return (
-    <div>
-      <h1>Welcome!</h1>
-
-      <p>You are logged in.</p>
-
-      <p>Email: {user.email}</p>
-
-      <button onClick={() => void signOut()}>
-        Logout
-      </button>
-    </div>
-  );
+  return <ChatPage userId={user.id} />;
 }
 
 export default App;
