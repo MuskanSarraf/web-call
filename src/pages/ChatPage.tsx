@@ -7,6 +7,8 @@ import { signOut } from "../services/authService";
 import { subscribeToMessages } from "../services/messageRealtimeService";
 import { supabase } from "../lib/supabase";
 import CallControls from "../components/CallControls";
+import { useWebRTC } from "../hooks/useWebRTC";
+
 
 
 type ChatPageProps = {
@@ -20,6 +22,16 @@ function ChatPage({ userId }: ChatPageProps) {
   const [messageText, setMessageText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const {
+  isCalling,
+  startCall,
+  endCall,
+  remoteAudioRef,
+} = useWebRTC(
+  userId,
+  selectedUser?.id ?? null,
+);
 
   useEffect(() => {
     const loadProfiles = async () => {
@@ -172,14 +184,15 @@ function ChatPage({ userId }: ChatPageProps) {
         <section>
           <h2>Chat with {selectedUser.email}</h2>
            <CallControls
-              onCall={() => {
-                console.log("Call clicked");
-           }}
-            onEndCall={() => {
-              console.log("End call clicked");
-           }}
-            isCalling={false}
-           />
+            onCall={() => void startCall()}
+            onEndCall={endCall}
+            isCalling={isCalling}
+            />
+            
+            <audio
+             ref={remoteAudioRef}
+              autoPlay
+            />
 
           <div>
             {messages.length === 0 ? (
