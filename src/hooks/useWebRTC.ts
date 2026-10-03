@@ -7,9 +7,12 @@ import {
   createSignalingChannel,
   sendSignal,
 } from "../services/signalingService";
+import {
+  createCall,
+  getLatestCallingCall,
+  updateCall,
+} from "../services/callService";
 import type { SignalMessage } from "../types/signaling";
-
-
 
 export const useWebRTC = (
   userId: string,
@@ -31,25 +34,48 @@ export const useWebRTC = (
     useRef<RTCSessionDescriptionInit | null>(null);
 
   const remoteAudioRef =
-  useRef<HTMLAudioElement | null>(null);  
+    useRef<HTMLAudioElement | null>(null);
+
+  const callIdRef =
+    useRef<number | null>(null);
+
+  const callStartedAtRef =
+    useRef<Date | null>(null);
+
+  const answeredAtRef =
+    useRef<Date | null>(null);
 
   const [isCalling, setIsCalling] = useState(false);
   const [incomingCall, setIncomingCall] = useState(false);
 
-  const setupRemoteAudio = (
-  peerConnection: RTCPeerConnection,
-  ) => {
-  peerConnection.ontrack = (event) => {
-    const [remoteStream] = event.streams;
+  /*
+   * Clean up WebRTC resources.
+   * This does NOT update the database or send signals.
+   */
+  const cleanupCall = () => {
+    localStreamRef.current?.getTracks().forEach((track) => {
+      track.stop();
+    });
 
-    if (!remoteStream || !remoteAudioRef.current) {
-      return;
-    }
+    peerConnectionRef.current?.close();
 
-    remoteAudioRef.current.srcObject = remoteStream;
+    localStreamRef.current = null;
+    peerConnectionRef.current = null;
+
+    pendingCandidatesRef.current = [];
+    pendingOfferRef.current = null;
+
+    callIdRef.current = null;
+    callStartedAtRef.current = null;
+    answeredAtRef.current = null;
+
+    setIsCalling(false);
+    setIncomingCall(false);
   };
-  };
 
+  /*
+   * Send ICE candidates to the other user.
+   */
   const setupIceCandidateHandler = (
     peerConnection: RTCPeerConnection,
   ) => {
@@ -71,61 +97,159 @@ export const useWebRTC = (
     };
   };
 
+  /*
+   * Attach the remote audio stream to the audio element.
+   */
+  const setupRemoteAudio = (
+    peerConnection: RTCPeerConnection,
+  ) => {
+    peerConnection.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+
+      if (!remoteStream || !remoteAudioRef.current) {
+        return;
+      }
+
+      remoteAudioRef.current.srcObject = remoteStream;
+
+      void remoteAudioRef.current.play().catch(() => {
+        // Browser may require user interaction before audio playback.
+      });
+    };
+  };
+
+  /*
+   * Handle incoming WebRTC signaling messages.
+   */
   useEffect(() => {
     if (!otherUserId) {
       return;
     }
-    const handleSignal = async (signal: SignalMessage) => {
+
+    const handleSignal = async (
+      signal: SignalMessage,
+    ): Promise<void> => {
+      /*
+       * Someone is calling us.
+       * We only store the offer here.
+       * The actual microphone/peer connection is created
+       * after the user clicks Accept.
+       */
       if (signal.type === "offer") {
-        pendingOfferRef.current = signal.data;
+        pendingOfferRef.current =
+          signal.data as RTCSessionDescriptionInit;
+
         setIncomingCall(true);
+
         return;
       }
 
-      if (signal.type === "ice-candidate") {
-        const peerConnection = peerConnectionRef.current;
-
-        if (!peerConnection?.remoteDescription) {
-          pendingCandidatesRef.current.push(signal.data);
-          return;
-        }
-
-        await peerConnection.addIceCandidate(signal.data);
-        return;
-      }
-
-      if (
-        signal.type === "call-rejected" ||
-        signal.type === "call-ended"
-      ) {
-        localStreamRef.current?.getTracks().forEach((track) => {
-          track.stop();
-        });
-        peerConnectionRef.current?.close();
-        localStreamRef.current = null;
-        peerConnectionRef.current = null;
-        pendingCandidatesRef.current = [];
-        pendingOfferRef.current = null;
-        setIsCalling(false);
-        setIncomingCall(false);
-        return;
-      }
-
+      /*
+       * Caller receives the answer.
+       */
       if (signal.type === "answer") {
-        const peerConnection = peerConnectionRef.current;
+        const peerConnection =
+          peerConnectionRef.current;
 
         if (!peerConnection) {
           return;
         }
 
-        await peerConnection.setRemoteDescription(signal.data);
+        await peerConnection.setRemoteDescription(
+          signal.data as RTCSessionDescriptionInit,
+        );
 
         for (const candidate of pendingCandidatesRef.current) {
           await peerConnection.addIceCandidate(candidate);
         }
 
         pendingCandidatesRef.current = [];
+
+        answeredAtRef.current = new Date();
+
+        if (callIdRef.current) {
+          await updateCall(callIdRef.current, {
+            status: "connected",
+            answeredAt: answeredAtRef.current.toISOString(),
+          });
+        }
+
         setIsCalling(true);
+
+        return;
+      }
+
+      /*
+       * ICE candidate arrived.
+       */
+      if (signal.type === "ice-candidate") {
+        const peerConnection =
+          peerConnectionRef.current;
+
+        if (!peerConnection) {
+          return;
+        }
+
+        const candidate =
+          signal.data as RTCIceCandidateInit;
+
+        /*
+         * ICE can arrive before the remote description.
+         * Store it temporarily.
+         */
+        if (!peerConnection.remoteDescription) {
+          pendingCandidatesRef.current.push(candidate);
+
+          return;
+        }
+
+        await peerConnection.addIceCandidate(candidate);
+
+        return;
+      }
+
+      /*
+       * Caller rejected our call.
+       */
+      if (signal.type === "call-rejected") {
+        if (callIdRef.current) {
+          await updateCall(callIdRef.current, {
+            status: "rejected",
+            endedAt: new Date().toISOString(),
+          });
+        }
+
+        cleanupCall();
+
+        return;
+      }
+
+      /*
+       * Other user ended the call.
+       */
+      if (signal.type === "call-ended") {
+        if (callIdRef.current) {
+          const endedAt = new Date();
+
+          const answeredAt =
+            answeredAtRef.current;
+
+          const duration = answeredAt
+            ? Math.floor(
+                (endedAt.getTime() -
+                  answeredAt.getTime()) /
+                  1000,
+              )
+            : 0;
+
+          await updateCall(callIdRef.current, {
+            status: "ended",
+            endedAt: endedAt.toISOString(),
+            duration,
+          });
+        }
+
+        cleanupCall();
       }
     };
 
@@ -145,69 +269,307 @@ export const useWebRTC = (
     };
   }, [userId, otherUserId]);
 
-  const startCall = async () => {
+  /*
+   * Start an outgoing call.
+   */
+  const startCall = async (): Promise<void> => {
     if (!otherUserId) {
       return;
     }
 
-    const stream = await getMicrophoneStream();
+    try {
+      /*
+       * 1. Create call metadata in DB.
+       */
+      const callId = await createCall(
+        userId,
+        otherUserId,
+      );
 
-    const peerConnection = createPeerConnection();
+      callIdRef.current = callId;
+      callStartedAtRef.current = new Date();
 
-    setupIceCandidateHandler(peerConnection);
-    setupRemoteAudio(peerConnection);
+      /*
+       * 2. Get microphone.
+       */
+      const stream = await getMicrophoneStream();
 
-    stream.getTracks().forEach((track) => {
-      peerConnection.addTrack(track, stream);
-    });
+      /*
+       * 3. Create WebRTC connection.
+       */
+      const peerConnection =
+        createPeerConnection();
 
-    localStreamRef.current = stream;
-    peerConnectionRef.current = peerConnection;
+      setupIceCandidateHandler(peerConnection);
+      setupRemoteAudio(peerConnection);
 
-    const offer = await peerConnection.createOffer();
+      /*
+       * 4. Add microphone tracks.
+       */
+      stream.getTracks().forEach((track) => {
+        peerConnection.addTrack(track, stream);
+      });
 
-    await peerConnection.setLocalDescription(offer);
+      localStreamRef.current = stream;
+      peerConnectionRef.current = peerConnection;
 
-    if (!channelRef.current) {
+      /*
+       * 5. Create offer.
+       */
+      const offer =
+        await peerConnection.createOffer();
+
+      await peerConnection.setLocalDescription(
+        offer,
+      );
+
+      if (!channelRef.current) {
+        throw new Error(
+          "Call signaling channel is not ready.",
+        );
+      }
+
+      /*
+       * 6. Send offer to receiver.
+       */
+      await sendSignal(channelRef.current, {
+        type: "offer",
+        senderId: userId,
+        receiverId: otherUserId,
+        data: offer,
+      });
+
+      setIsCalling(true);
+    } catch (error) {
+      /*
+       * If WebRTC setup fails after creating the DB row,
+       * mark the call as failed.
+       */
+      if (callIdRef.current) {
+        try {
+          await updateCall(callIdRef.current, {
+            status: "failed",
+            endedAt: new Date().toISOString(),
+          });
+        } catch {
+          // Keep the original call error.
+        }
+      }
+
+      cleanupCall();
+
+      throw error;
+    }
+  };
+
+  /*
+   * Accept an incoming call.
+   */
+  const acceptCall = async (): Promise<void> => {
+    if (!otherUserId) {
       return;
     }
 
-    await sendSignal(channelRef.current, {
-      type: "offer",
-      senderId: userId,
-      receiverId: otherUserId,
-      data: offer,
-    });
+    const pendingOffer = pendingOfferRef.current;
 
-    setIsCalling(true);
+    if (!pendingOffer) {
+      return;
+    }
+
+    try {
+      /*
+       * Find the DB row created by the caller.
+       */
+      const callId = await getLatestCallingCall(
+        otherUserId,
+        userId,
+      );
+
+      if (!callId) {
+        throw new Error(
+          "Call record was not found.",
+        );
+      }
+
+      callIdRef.current = callId;
+
+      /*
+       * Get receiver microphone.
+       */
+      const stream = await getMicrophoneStream();
+
+      /*
+       * Create receiver WebRTC connection.
+       */
+      const peerConnection =
+        createPeerConnection();
+
+      setupIceCandidateHandler(peerConnection);
+      setupRemoteAudio(peerConnection);
+
+      stream.getTracks().forEach((track) => {
+        peerConnection.addTrack(track, stream);
+      });
+
+      localStreamRef.current = stream;
+      peerConnectionRef.current = peerConnection;
+
+      /*
+       * Set caller's offer as remote description.
+       */
+      await peerConnection.setRemoteDescription(
+        pendingOffer,
+      );
+
+      /*
+       * Add ICE candidates that arrived early.
+       */
+      for (const candidate of pendingCandidatesRef.current) {
+        await peerConnection.addIceCandidate(candidate);
+      }
+
+      pendingCandidatesRef.current = [];
+
+      /*
+       * Create answer.
+       */
+      const answer =
+        await peerConnection.createAnswer();
+
+      await peerConnection.setLocalDescription(
+        answer,
+      );
+
+      if (!channelRef.current) {
+        throw new Error(
+          "Call signaling channel is not ready.",
+        );
+      }
+
+      /*
+       * Send answer to caller.
+       */
+      await sendSignal(channelRef.current, {
+        type: "answer",
+        senderId: userId,
+        receiverId: otherUserId,
+        data: answer,
+      });
+
+      answeredAtRef.current = new Date();
+
+      /*
+       * Update DB.
+       */
+      await updateCall(callId, {
+        status: "connected",
+        answeredAt:
+          answeredAtRef.current.toISOString(),
+      });
+
+      pendingOfferRef.current = null;
+
+      setIncomingCall(false);
+      setIsCalling(true);
+    } catch (error) {
+      cleanupCall();
+      throw error;
+    }
   };
 
- const endCall = async () => {
-  if (channelRef.current && otherUserId) {
-    await sendSignal(channelRef.current, {
-      type: "call-ended",
-      senderId: userId,
-      receiverId: otherUserId,
-      data: null,
-    });
-  }
+  /*
+   * Reject an incoming call.
+   */
+  const rejectCall = async (): Promise<void> => {
+    if (!otherUserId) {
+      return;
+    }
 
-  localStreamRef.current?.getTracks().forEach((track) => {
-    track.stop();
-  });
+    /*
+     * Find the caller's DB call record.
+     */
+    const callId = await getLatestCallingCall(
+      otherUserId,
+      userId,
+    );
 
-  peerConnectionRef.current?.close();
+    /*
+     * Tell caller that we rejected.
+     */
+    if (channelRef.current) {
+      await sendSignal(channelRef.current, {
+        type: "call-rejected",
+        senderId: userId,
+        receiverId: otherUserId,
+        data: null,
+      });
+    }
 
-  localStreamRef.current = null;
-  peerConnectionRef.current = null;
+    /*
+     * Update database.
+     */
+    if (callId) {
+      await updateCall(callId, {
+        status: "rejected",
+        endedAt: new Date().toISOString(),
+      });
+    }
 
-  pendingCandidatesRef.current = [];
-  pendingOfferRef.current = null;
+    pendingOfferRef.current = null;
+    setIncomingCall(false);
+  };
 
-  setIsCalling(false);
-  setIncomingCall(false);
- };
+  /*
+   * End an active call.
+   */
+  const endCall = async (): Promise<void> => {
+    if (!otherUserId) {
+      cleanupCall();
+      return;
+    }
 
+    /*
+     * Tell the other user first.
+     */
+    if (channelRef.current) {
+      await sendSignal(channelRef.current, {
+        type: "call-ended",
+        senderId: userId,
+        receiverId: otherUserId,
+        data: null,
+      });
+    }
+
+    /*
+     * Update call metadata.
+     */
+    if (callIdRef.current) {
+      const endedAt = new Date();
+
+      const answeredAt =
+        answeredAtRef.current;
+
+      const duration = answeredAt
+        ? Math.floor(
+            (endedAt.getTime() -
+              answeredAt.getTime()) /
+              1000,
+          )
+        : 0;
+
+      await updateCall(callIdRef.current, {
+        status: "ended",
+        endedAt: endedAt.toISOString(),
+        duration,
+      });
+    }
+
+    cleanupCall();
+  };
+
+  /*
+   * Clean up when the component is removed.
+   */
   useEffect(() => {
     return () => {
       localStreamRef.current?.getTracks().forEach(
@@ -219,84 +581,14 @@ export const useWebRTC = (
       peerConnectionRef.current?.close();
     };
   }, []);
-      const acceptCall = async () => {
-  if (!otherUserId) {
-    return;
-  }
-
-  if (!pendingOfferRef.current) {
-    return;
-  }
-
-  const stream = await getMicrophoneStream();
-
-  const peerConnection = createPeerConnection();
-
-  setupIceCandidateHandler(peerConnection);
-  setupRemoteAudio(peerConnection);
-
-  stream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, stream);
-  });
-
-  localStreamRef.current = stream;
-  peerConnectionRef.current = peerConnection;
-
-  await peerConnection.setRemoteDescription(
-    pendingOfferRef.current,
-  );
-
-  for (const candidate of pendingCandidatesRef.current) {
-    await peerConnection.addIceCandidate(candidate);
-  }
-
-  pendingCandidatesRef.current = [];
-
-  const answer =
-    await peerConnection.createAnswer();
-
-  await peerConnection.setLocalDescription(answer);
-
-  if (!channelRef.current) {
-    return;
-  }
-
-  await sendSignal(channelRef.current, {
-    type: "answer",
-    senderId: userId,
-    receiverId: otherUserId,
-    data: answer,
-  });
-
-  pendingOfferRef.current = null;
-
-  setIncomingCall(false);
-  setIsCalling(true);
-  }; 
-  const rejectCall = async () => {
-  if (!channelRef.current || !otherUserId) {
-    return;
-  }
-
-  await sendSignal(channelRef.current, {
-    type: "call-rejected",
-    senderId: userId,
-    receiverId: otherUserId,
-    data: null,
-  });
-
-  pendingOfferRef.current = null;
-
-  setIncomingCall(false);
-};
 
   return {
     isCalling,
     incomingCall,
     startCall,
     acceptCall,
-    endCall,
     rejectCall,
+    endCall,
     remoteAudioRef,
   };
 };
