@@ -1,32 +1,19 @@
-# React + TypeScript + Vite
+How to run?
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+1. git clone <repo-url>
+2. cd "web call"
+3. npm install
+4. Create .env with Supabase URL + publishable key
+5. npm run dev
+6. Open http://localhost:5173
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Testing:
+- Chrome normal → User A
+- Chrome Incognito → User B
+- Test chat
+- Test realtime messages
+- User A → Call
+- User B → Accept
+- Test audio
+- Test Reject/End Call
+- Check messages and calls tables in Supabase
