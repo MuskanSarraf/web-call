@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabase";
 
-export const subscribeToMessages = (
+export const subscribeToMessages = (//It creates a Supabase Realtime channel:
   callback: (message: {
     id: number;
     senderId: string;
@@ -9,7 +9,7 @@ export const subscribeToMessages = (
     createdAt: string;
   }) => void,
 ) => {
-  const channel = supabase
+  const channel = supabase//Tell me whenever a new row is inserted into messages
     .channel("messages")
     .on(
       "postgres_changes",

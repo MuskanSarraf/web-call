@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabase";
 
-export const signUp = async (
+export const signUp = async (//Supabase creates the authentication account.
   email: string,
   password: string,
 ) => {
@@ -16,7 +16,7 @@ export const signUp = async (
   return data;
 };
 
-export const signIn = async (
+export const signIn = async (//If successful, Supabase creates an authenticated session.
   email: string,
   password: string,
 ) => {
@@ -32,7 +32,7 @@ export const signIn = async (
   return data;
 };
 
-export const signOut = async () => {
+export const signOut = async () => {//This removes the current authentication session.
   const { error } = await supabase.auth.signOut();
 
   if (error) {

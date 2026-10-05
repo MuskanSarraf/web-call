@@ -86,7 +86,7 @@ const {
   }
 
   const channel = subscribeToMessages((newMessage) => {
-    const isCurrentConversation =
+    const isCurrentConversation =//Check if the new message belongs to the current conversation
       (newMessage.senderId === userId &&
         newMessage.receiverId === selectedUser.id) ||
       (newMessage.senderId === selectedUser.id &&
@@ -97,7 +97,7 @@ const {
     }
 
     setMessages((currentMessages) => {
-      const alreadyExists = currentMessages.some(
+      const alreadyExists = currentMessages.some(//Check if the new message already exists in the current messages
         (message) => message.id === newMessage.id,
       );
 
@@ -114,7 +114,7 @@ const {
   };
 }, [userId, selectedUser]);
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = async () => {//to send a message to the selected user
     if (!selectedUser) {
       return;
     }
@@ -132,7 +132,7 @@ const {
         receiverId: selectedUser.id,
         message: trimmedMessage,
       });
-
+        // Update the messages state with the new message
       setMessages((currentMessages) => [
         ...currentMessages,
         newMessage,

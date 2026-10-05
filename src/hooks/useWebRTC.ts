@@ -18,6 +18,7 @@ export const useWebRTC = (
   userId: string,
   otherUserId: string | null,
 ) => {
+  //userefs-values need to survive React renders without causing unnecessary re-renders.
   const peerConnectionRef =
     useRef<RTCPeerConnection | null>(null);
 
@@ -49,7 +50,7 @@ export const useWebRTC = (
   const [incomingCall, setIncomingCall] = useState(false);
 
   /*
-   * Clean up WebRTC resources.
+   * Clean up WebRTC resources-closes the peer connection, stops the local media tracks, and resets the state.
    * This does NOT update the database or send signals.
    */
   const cleanupCall = () => {
@@ -74,7 +75,7 @@ export const useWebRTC = (
   };
 
   /*
-   * Send ICE candidates to the other user.
+   * Send ICE candidates to the other user-How can I actually reach the other browser?
    */
   const setupIceCandidateHandler = (
     peerConnection: RTCPeerConnection,
@@ -126,7 +127,7 @@ export const useWebRTC = (
       return;
     }
 
-    const handleSignal = async (
+    const handleSignal = async (// Handle incoming WebRTC signaling messages.
       signal: SignalMessage,
     ): Promise<void> => {
       /*
@@ -304,7 +305,7 @@ export const useWebRTC = (
       setupRemoteAudio(peerConnection);
 
       /*
-       * 4. Add microphone tracks.
+       * 4. Add microphone tracks-Send this microphone audio through this connection.
        */
       stream.getTracks().forEach((track) => {
         peerConnection.addTrack(track, stream);
@@ -314,7 +315,7 @@ export const useWebRTC = (
       peerConnectionRef.current = peerConnection;
 
       /*
-       * 5. Create offer.
+       * 5. Create offer-want to establish a WebRTC connection with these capabilities.
        */
       const offer =
         await peerConnection.createOffer();
@@ -332,7 +333,7 @@ export const useWebRTC = (
       /*
        * 6. Send offer to receiver.
        */
-      await sendSignal(channelRef.current, {
+      await sendSignal(channelRef.current, { //supabase realtime broadcasts this offer to the other user.
         type: "offer",
         senderId: userId,
         receiverId: otherUserId,
@@ -370,7 +371,7 @@ export const useWebRTC = (
       return;
     }
 
-    const pendingOffer = pendingOfferRef.current;
+    const pendingOffer = pendingOfferRef.current;//pendingOfferRef.current is set when the other user sends an offer. It is stored in a ref so that it can be accessed later when the user accepts the call.
 
     if (!pendingOffer) {
       return;

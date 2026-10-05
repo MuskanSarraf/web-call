@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase";
 import type { Profile } from "../types/profile";
 
-export const getProfiles = async (
+export const getProfiles = async (//Give me all users except myself.
   currentUserId: string,
 ): Promise<Profile[]> => {
   const { data, error } = await supabase

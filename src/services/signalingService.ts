@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase";
 import type { SignalMessage } from "../types/signaling";
 
-export const getCallChannelName = (
+export const getCallChannelName = (//creates the same channel name for both users.
  userId: string,
   otherUserId: string,
 ): string => {
@@ -10,7 +10,11 @@ export const getCallChannelName = (
   return `call:${users[0]}:${users[1]}`;
 };
 
-export const createSignalingChannel = (
+// User A ID = abc
+// User B ID = xyz
+// call:abc:xyz-same realtime channel name for both users, so they can communicate with each other.
+
+export const createSignalingChannel = (// this function creates a signaling channel for WebRTC communication between two users using Supabase Realtime.
   userId: string,
   otherUserId: string,
   onSignal: (signal: SignalMessage) => void,
@@ -31,7 +35,7 @@ export const createSignalingChannel = (
           return;
         }
 
-        onSignal(signal);
+        onSignal(signal);//call signal received from the other user. with offer, answer, ice-candidate, call-rejected, or call-ended.
       },
     )
     .subscribe();
